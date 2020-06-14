@@ -1,11 +1,12 @@
-// 实现这个项目的构建任务
 const { src, dest, parallel, series, watch } = require('gulp')
 
 const del = require('del')
-const bs = require('browser-sync').create()
+const browserSync = require('browser-sync')
 
 const loadPlugins = require('gulp-load-plugins')
+
 const plugins = loadPlugins()
+const bs = browserSync.create()
 
 const data = {
   menus: [
@@ -68,12 +69,7 @@ const script = () => {
 
 const page = () => {
   return src('src/*.html', { base: 'src' })
-    .pipe(plugins.swig({
-      data,
-      defaults: {
-        cache: false
-      }
-    }))
+    .pipe(plugins.swig({ data, defaults: { cache: false } })) // 防止模板缓存导致页面不能及时更新
     .pipe(dest('temp'))
     .pipe(bs.reload({ stream: true }))
 }
@@ -95,30 +91,13 @@ const extra = () => {
     .pipe(dest('dist'))
 }
 
-/**
- * 转换打包页面中相应的文件路径，及压缩JS,CSS等
- * @returns {*}
- */
-const useref = () => {
-  return src('temp/*.html', { base: 'temp' })
-    .pipe(plugins.useref({ searchPath: ['temp', '.'] }))
-    .pipe(plugins.if(/\.js$/, plugins.uglify()))
-    .pipe(plugins.if(/\.css$/, plugins.cleanCss()))
-    .pipe(plugins.if(/\.html$/,
-      plugins.htmlmin({
-        collapseWhitespace: true,
-        minifyCSS: true,
-        minifyJS: true
-      })))
-    .pipe(dest('dist'))
-}
-
 const serve = () => {
-  // watch方法只是在serve启动后监听任务，如果对应的文件有修改，则重新执行相应的任务
   watch('src/assets/styles/*.scss', style)
   watch('src/assets/scripts/*.js', script)
   watch('src/*.html', page)
-
+  // watch('src/assets/images/**', image)
+  // watch('src/assets/fonts/**', font)
+  // watch('public/**', extra)
   watch([
     'src/assets/images/**',
     'src/assets/fonts/**',
@@ -126,6 +105,10 @@ const serve = () => {
   ], bs.reload)
 
   bs.init({
+    notify: false,
+    port: 2080,
+    // open: false,
+    // files: 'dist/**',
     server: {
       baseDir: ['temp', 'src', 'public'],
       routes: {
@@ -135,11 +118,37 @@ const serve = () => {
   })
 }
 
+const useref = () => {
+  return src('temp/*.html', { base: 'temp' })
+    .pipe(plugins.useref({ searchPath: ['temp', '.'] }))
+    // html js css
+    .pipe(plugins.if(/\.js$/, plugins.uglify()))
+    .pipe(plugins.if(/\.css$/, plugins.cleanCss()))
+    .pipe(plugins.if(/\.html$/, plugins.htmlmin({
+      collapseWhitespace: true,
+      minifyCSS: true,
+      minifyJS: true
+    })))
+    .pipe(dest('dist'))
+}
+
 const compile = parallel(style, script, page)
-const build = series(clean, parallel(series(compile, useref), image, font, extra))
-const dev = series(compile, serve)
+
+// 上线之前执行的任务
+const build =  series(
+  clean,
+  parallel(
+    series(compile, useref),
+    image,
+    font,
+    extra
+  )
+)
+
+const develop = series(compile, serve)
 
 module.exports = {
+  clean,
   build,
-  dev
+  develop
 }
